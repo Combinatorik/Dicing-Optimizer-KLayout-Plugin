@@ -37,7 +37,6 @@ def inRegion (x0, x):
 def dicingSawOptimization(waferDiameter, chipSideLen, maxStepSize, flats=[], deg=45):
   #Function init
   dy = min(maxStepSize,chipSideLen / 100)
-  print(dy)
   maxCountStepX = 0
   maxCountStepY = 0
   maxCount = 0
@@ -75,12 +74,40 @@ def dicingSawOptimization(waferDiameter, chipSideLen, maxStepSize, flats=[], deg
   return maxCount, maxCountStepX, maxCountStepY
 
 def laserOptimization(waferDiameter, chipSideLen, maxStepSize, flats=[]):
-  return 0, 0, 0
+  #Function init
+  dy = min(maxStepSize,chipSideLen / 100)
+  maxCountStepX = 0
+  maxCountStepY = 0
+  maxCount = 0
+  r=waferDiameter/2
+  
+  #x sweep
+  xstep = 0
+  while xstep < chipSideLen:
+    count = 0
+    x = -r-chipSideLen+xstep
+    while x < r:
+      colCount, colStep = optimizeColumn(waferDiameter/2, chipSideLen, x, 0) 
+      count = count + colCount      
+      x = x + chipSideLen
+    
+    if count >= maxCount:
+      maxCount = count
+      maxCountStepX = xstep
+    xstep = xstep + dy
+    
+  return maxCount, maxCountStepX, maxCountStepY
+  
+def optimizeColumn(r, chipSideLen, x0, ystep):
+  if inRegion(x0, r) and inRegion(x0+chipSideLen,r):
+    y=min(m.sqrt(r**2-x0**2), m.sqrt(r**2-(x0+chipSideLen)**2))
+    return m.floor(2*y/chipSideLen), (ystep + chipSideLen/2)
+  return 0, 0
   
 #inputs
-waferDiameter = 51
-chipSideLen = 10
-cutMachine="SAW"
+waferDiameter = 150
+chipSideLen = 30
+cutMachine="Laser"
 
 #All units in mm
 flats = {25:[], 51:[15.88, 8], 76:[22.22, 11.18], 100:[32.5, 18], 125:[42.5, 27.5], 130:[], 150:[57.5, 37.5], 200:[], 300:[], 450:[]}
@@ -93,11 +120,11 @@ maxChips = m.floor(areaTotal/chipDiameter)
 print("Absolute max chips:  " + str(maxChips))
 
 if cutMachine == "SAW":
-  maxCount, maxCountStepX, maxCountStepY = dicingSawOptimization(waferDiameter, chipSideLen, 0.1)
+  maxCount, maxCountStepX, maxCountStepY = dicingSawOptimization(waferDiameter, chipSideLen, 1000.1)
 else:
-  maxCount, maxCountStepX, maxCountStepY = laserOptimization(waferDiameter, chipSideLen, 0.1)
+  maxCount, maxCountStepX, maxCountStepY = laserOptimization(waferDiameter, chipSideLen, 1000.1)
 
 print("Max found:  " + str(maxCount))
 print("Cut x offset:  " + str(-chipSideLen+maxCountStepX))
 print("Cut y offset:  " + str(-chipSideLen+maxCountStepY))
-print(str(100*maxCount/maxChips) + "% yield")
+print(str(round(100*maxCount/maxChips)) + "% yield")
