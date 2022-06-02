@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="utf-8"?>
+<klayout-macro>
+ <description>Dicing Optimizer</description>
+ <version/>
+ <category>pymacros</category>
+ <prolog/>
+ <epilog/>
+ <doc/>
+ <autorun>false</autorun>
+ <autorun-early>false</autorun-early>
+ <shortcut/>
+ <show-in-menu>false</show-in-menu>
+ <group-name/>
+ <menu-path/>
+ <interpreter>python</interpreter>
+ <dsl-interpreter-name/>
+ <text>from pya import *
+import math as m
+
+# Create GUI class
+class Dialog(pya.QDialog):
+
+  # Dialog constructor 
+  def __init__(self, parent = None): 
+      pya.QDialog.__init__(self)
+      
+      #Window settings
+      self.setWindowTitle("Dicing Optimizer") 
+      self.setGeometry(300, 100, 300, 300) 
+
+      #Script variables
+      #All units in mm
+      self.flats = {25:[0,0], 51:[15.88, 8], 76:[22.22, 11.18], 100:[32.5, 18], 125:[42.5, 27.5], 130:[0,0], 150:[57.5, 37.5], 200:[0,0], 300:[0,0], 450:[0,0]}
+      self.machines = {"SAW": 0, "LASER":1}
+      self.lastChipLen = 15
+      self.lastTool = "SAW"
+      
+      #Build GUI objects
+      #Input sections
+      self.inputGroup = QGroupBox("Wafer Config") 
+      self.inputLayout = QVBoxLayout(self.inputGroup)
+      
+      self.waferDiameterLabel = QLabel('Wafer diameter:')
+      self.inputLayout.addWidget(self.waferDiameterLabel)
+      self.waferDiameterGroup = QButtonGroup(self)
+      self.cm25 = QRadioButton("25cm (&amp;1in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm25)
+      self.inputLayout.addWidget(self.cm25)
+      self.cm51 = QRadioButton("51cm (&amp;2in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm51)
+      self.inputLayout.addWidget(self.cm51)
+      self.cm76 = QRadioButton("76cm (&amp;3in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm76)
+      self.inputLayout.addWidget(self.cm76)
+      self.cm100 = QRadioButton("100cm (&amp;4in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm100)
+      self.inputLayout.addWidget(self.cm100)
+      self.cm125 = QRadioButton("125cm (4.&amp;9in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm125)
+      self.inputLayout.addWidget(self.cm125)
+      self.cm130 = QRadioButton("130cm (&amp;5in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm130)
+      self.inputLayout.addWidget(self.cm130)
+      self.cm150 = QRadioButton("150cm (&amp;6in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm150)
+      self.inputLayout.addWidget(self.cm150)
+      self.cm200 = QRadioButton("200cm (&amp;8in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm200)
+      self.inputLayout.addWidget(self.cm200)
+      self.cm300 = QRadioButton("300cm (&amp;12in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm300)
+      self.inputLayout.addWidget(self.cm300)
+      self.cm450 = QRadioButton("450cm (&amp;18in)", self.inputGroup)
+      self.waferDiameterGroup.addButton(self.cm450)
+      self.inputLayout.addWidget(self.cm450)
+      
+      self.waferOrientationLabel = QLabel('Wafer flats:')
+      self.inputLayout.addWidget(self.waferOrientationLabel)
+      self.flatGroup = QButtonGroup(self)
+      self.noFlat = QRadioButton("No flat", self.inputGroup)
+      self.flatGroup.addButton(self.noFlat)
+      self.inputLayout.addWidget(self.noFlat)
+      self.oneFlat = QRadioButton("One flat", self.inputGroup)
+      self.flatGroup.addButton(self.oneFlat)
+      self.inputLayout.addWidget(self.oneFlat)
+      self.twoFlat45 = QRadioButton("Two Flats (45°)", self.inputGroup)
+      self.flatGroup.addButton(self.twoFlat45)
+      self.inputLayout.addWidget(self.twoFlat45)
+      self.twoFlat90 = QRadioButton("Two Flats (90°)", self.inputGroup)
+      self.flatGroup.addButton(self.twoFlat90)
+      self.inputLayout.addWidget(self.twoFlat90)
+      self.twoFlat135 = QRadioButton("Two Flats (135°)", self.inputGroup)
+      self.flatGroup.addButton(self.twoFlat135)
+      self.inputLayout.addWidget(self.twoFlat135)
+      self.twoFlat180 = QRadioButton("Two Flats (180°)", self.inputGroup) 
+      self.flatGroup.addButton(self.twoFlat180)
+      self.inputLayout.addWidget(self.twoFlat180) 
+      
+      self.primaryFlatLabel = QLabel('Primary flat:')
+      self.inputLayout.addWidget(self.primaryFlatLabel)
+      self.primaryFlatHLayout = QHBoxLayout(self.inputGroup)
+      self.primaryFlatWidget = QWidget(self)
+      self.primaryFlatWidget.setLayout(self.primaryFlatHLayout)
+      self.inputLayout.addWidget(self.primaryFlatWidget)
+      self.primaryFlatLineEdit = QLineEdit(str(self.flats[150][0]), self.primaryFlatWidget)
+      self.primaryFlatHLayout.addWidget(self.primaryFlatLineEdit)
+      self.primaryFlatLenUnits = QComboBox(self.primaryFlatWidget)
+      self.primaryFlatLenUnits.addItem("mm")
+      self.primaryFlatLenUnits.addItem("in")
+      self.primaryFlatLenUnits.addItem("cm")
+      self.primaryFlatLenUnits.addItem("um")
+      self.primaryFlatHLayout.addWidget(self.primaryFlatLenUnits)
+ 
+      self.secondaryFlatLabel = QLabel('Secondary flat:')
+      self.secondaryFlatHLayout = QHBoxLayout(self.inputGroup)
+      self.secondaryFlatWidget = QWidget(self)
+      self.secondaryFlatWidget.setLayout(self.secondaryFlatHLayout)
+      self.inputLayout.addWidget(self.secondaryFlatWidget)
+      self.secondaryFlatLineEdit = QLineEdit(str(self.flats[150][1]), self.secondaryFlatWidget)
+      self.secondaryFlatHLayout.addWidget(self.secondaryFlatLineEdit)
+      self.secondaryFlatLenUnits = QComboBox(self.secondaryFlatWidget)
+      self.secondaryFlatLenUnits.addItem("mm")
+      self.secondaryFlatLenUnits.addItem("in")
+      self.secondaryFlatLenUnits.addItem("cm")
+      self.secondaryFlatLenUnits.addItem("um")
+      self.secondaryFlatHLayout.addWidget(self.secondaryFlatLenUnits)
+      
+      #Chip config section
+      self.chipGroup = QGroupBox("Chip Config")
+      self.chipLayout = QVBoxLayout(self.chipGroup)
+      self.chipLenLabel = QLabel('Chip side length:')
+      self.chipLayout.addWidget(self.chipLenLabel)
+      self.chipInLayout = QHBoxLayout(self.chipGroup)
+      self.lenControlWidget = QWidget(self)
+      self.lenControlWidget.setLayout(self.chipInLayout)
+      self.chipLayout.addWidget(self.lenControlWidget)
+      self.lenLineEdit = QLineEdit("15", self.lenControlWidget)
+      self.chipInLayout.addWidget(self.lenLineEdit)
+      self.chipLenUnits = QComboBox(self.lenControlWidget)
+      self.chipLenUnits.addItem("mm")
+      self.chipLenUnits.addItem("in")
+      self.chipLenUnits.addItem("cm")
+      self.chipLenUnits.addItem("um")
+      self.chipInLayout.addWidget(self.chipLenUnits)    
+      
+      #Machine config section
+      self.machineGroup = QGroupBox("Machine Config") 
+      self.machineLayout = QVBoxLayout(self.machineGroup)
+      self.machineLabel = QLabel('Cutting machine:')
+      self.machineBGroup = QButtonGroup(self)
+      self.machineLayout.addWidget(self.machineLabel)     
+      self.saw = QRadioButton("&amp;Dicing Saw", self.inputGroup)
+      self.machineBGroup.addButton(self.saw)
+      self.machineLayout.addWidget(self.saw)     
+      self.laser = QRadioButton("&amp;Laser", self.inputGroup)
+      self.machineBGroup.addButton(self.laser)
+      self.machineLayout.addWidget(self.laser) 
+
+      self.dicingBladeLabel = QLabel('Dicing Blade Width\Laser Spot Size:')
+      self.machineLayout.addWidget(self.dicingBladeLabel)
+      self.dicingBladeHLayout = QHBoxLayout(self.machineGroup)
+      self.dicingBladeWidget = QWidget(self)
+      self.dicingBladeWidget.setLayout(self.dicingBladeHLayout)
+      self.machineLayout.addWidget(self.dicingBladeWidget)
+      self.dicingBladeLineEdit = QLineEdit("25", self.dicingBladeWidget)
+      self.dicingBladeHLayout.addWidget(self.dicingBladeLineEdit)
+      self.dicingBladeLenUnits = QComboBox(self.dicingBladeWidget)
+      self.dicingBladeLenUnits.addItem("um")
+      self.dicingBladeLenUnits.addItem("mm")
+      self.dicingBladeLenUnits.addItem("in")
+      self.dicingBladeLenUnits.addItem("cm")
+      self.dicingBladeHLayout.addWidget(self.dicingBladeLenUnits)
+          
+      #Output section
+      self.outputGroup = QGroupBox("Outputs") 
+      self.outputLayout = QVBoxLayout(self.outputGroup)
+      self.chipsFoundLabel = QLabel('Max chips found:  ')
+      self.yieldLabel = QLabel('Yield:  ')
+      self.outputLayout.addWidget(self.chipsFoundLabel)
+      self.outputLayout.addWidget(self.yieldLabel)
+      
+      #Save section
+      self.buttonBox = QDialogButtonBox(self)
+      self.calcButton = self.buttonBox.addButton("Calculate", QDialogButtonBox.AcceptRole)
+      self.printButton = self.buttonBox.addButton("Print to File", QDialogButtonBox.AcceptRole)
+      self.cancel = self.buttonBox.addButton(QDialogButtonBox.Cancel)
+      
+
+      # Build overall GUI 
+      self.mainLayout = QVBoxLayout() 
+      self.mainLayout.addWidget(self.inputGroup) 
+      self.mainLayout.addWidget(self.chipGroup)
+      self.mainLayout.addWidget(self.machineGroup)
+      self.mainLayout.addWidget(self.outputGroup)
+      self.mainLayout.addWidget(self.buttonBox)
+      self.setLayout(self.mainLayout) 
+      
+      #default config
+      self.cm150.toggle()
+      self.oneFlat.toggle()
+      self.saw.toggle()
+      
+      #Button actions
+      self.cancel.clicked(lambda button: self.reject())
+      self.cm25.clicked(self.updateWaferDiam)
+      self.cm51.clicked(self.updateWaferDiam)
+      self.cm76.clicked(self.updateWaferDiam)
+      self.cm100.clicked(self.updateWaferDiam)
+      self.cm125.clicked(self.updateWaferDiam)
+      self.cm130.clicked(self.updateWaferDiam)
+      self.cm150.clicked(self.updateWaferDiam)
+      self.cm200.clicked(self.updateWaferDiam)
+      self.cm300.clicked(self.updateWaferDiam)
+      self.cm450.clicked(self.updateWaferDiam)
+      self.noFlat.clicked(self.updateFlat)
+      self.oneFlat.clicked(self.updateFlat)
+      self.twoFlat45.clicked(self.updateFlat)
+      self.twoFlat90.clicked(self.updateFlat)
+      self.twoFlat135.clicked(self.updateFlat)
+      self.twoFlat180.clicked(self.updateFlat)
+            
+      #Update GUI
+      self.updateFlat()
+      self.updateWaferDiam()
+  
+  def updateWaferDiam(self):
+    if self.cm25.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[25][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[25][1])
+    elif self.cm51.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[51][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[51][1])
+      self.primaryFlatLenUnits.setCurrentIndex(0)
+      self.secondaryFlatLenUnits.setCurrentIndex(0)
+    elif self.cm76.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[76][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[76][1])
+      self.primaryFlatLenUnits.setCurrentIndex(0)
+      self.secondaryFlatLenUnits.setCurrentIndex(0)
+    elif self.cm100.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[100][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[100][1])
+      self.primaryFlatLenUnits.setCurrentIndex(0)
+      self.secondaryFlatLenUnits.setCurrentIndex(0)
+    elif self.cm125.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[125][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[125][1])
+      self.primaryFlatLenUnits.setCurrentIndex(0)
+      self.secondaryFlatLenUnits.setCurrentIndex(0)
+    elif self.cm130.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[130][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[130][1])
+    elif self.cm150.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[150][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[150][1])
+      self.primaryFlatLenUnits.setCurrentIndex(0)
+      self.secondaryFlatLenUnits.setCurrentIndex(0)
+    elif self.cm200.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[200][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[200][1])
+    elif self.cm300.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[300][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[300][1])
+    elif self.cm450.isChecked():
+      self.primaryFlatLineEdit.text = str(self.flats[450][0])
+      self.secondaryFlatLineEdit.text = str(self.flats[450][1])
+     
+  def updateFlat(self):
+    if self.noFlat.isChecked():
+      self.primaryFlatLineEdit.setEnabled(False)
+      self.primaryFlatLenUnits.setEnabled(False)
+      self.secondaryFlatLineEdit.setEnabled(False)
+      self.secondaryFlatLenUnits.setEnabled(False)
+    elif self.oneFlat.isChecked():
+      self.primaryFlatLineEdit.setEnabled(True)
+      self.primaryFlatLenUnits.setEnabled(True)
+      self.secondaryFlatLineEdit.setEnabled(False)
+      self.secondaryFlatLenUnits.setEnabled(False)
+    else:
+      self.primaryFlatLineEdit.setEnabled(True)
+      self.primaryFlatLenUnits.setEnabled(True)
+      self.secondaryFlatLineEdit.setEnabled(True)
+      self.secondaryFlatLenUnits.setEnabled(True)
+      
+  def chipInWafer(self, x0, y0, slen, r, xmin, xmax, ymin, ymax):
+    #Bottom left corner
+    if not inRegion(x0, xmin, xmax):
+      return False
+    y = math.sqrt(r**2 - x0**2)
+    y0min = max(-y, ymin)
+    y0max = min(y, ymax)
+    if not inRegion(y0, y0min, y0max):
+      return False  
+  
+    #Top left corner
+    if not inRegion(y0+slen, y0min, y0max):
+      return False
+      
+    #Bottom right corner
+    if not inRegion(x0+slen, xmin, xmax):
+      return False
+    y = math.sqrt(r**2 - (x0+slen)**2)
+    y0min = max(-y, ymin)
+    y0max = min(y, ymax)
+    if not inRegion(y0, y0min, y0max):
+      return False 
+    
+    #Top right corner
+    if not inRegion(y0+slen, y0min, y0max):
+      return False
+    
+    #If we're here then all four corners are within the wafer
+    return True
+    
+  def chipInWaferLinBound(self, x0, y0, slen, r, xmin, xmax, m, b):
+    #Bottom left corner
+    if not inRegion(x0, xmin, xmax):
+      return False
+    y = math.sqrt(r**2 - x0**2)
+    y0min = max(-y, m*x0+b)
+    y0max = y
+    if not inRegion(y0, y0min, y0max):
+      return False  
+  
+    #Top left corner
+    if not inRegion(y0+slen, y0min, y0max):
+      return False  
+      
+    #Bottom right corner
+    if not inRegion(x0+slen, xmin, xmax):
+      return False
+    y = math.sqrt(r**2 - (x0+slen)**2)
+    y0min = max(-y, m*(x0+slen)+b)
+    y0max = y
+    if not inRegion(y0, y0min, y0max):
+      return False 
+    
+    #Top right corner
+    if not inRegion(y0+slen, y0min, y0max):
+      return False
+    
+    #If we're here then all four corners are within the wafer
+    return True
+  
+  def dicingSawOptimization(self, waferDiameter, chipSideLen, maxStepSize, flats=[], deg=45):
+    #Function init
+    dy = min(maxStepSize,chipSideLen / 100)
+    maxCountStepX = 0
+    maxCountStepY = 0
+    maxCount = 0
+    r=waferDiameter/2
+    
+    #x sweep
+    xstep = 0
+    while xstep &lt; chipSideLen:
+      ystep = 0
+      
+      #y sweep
+      while ystep &lt; chipSideLen:
+        #Horizontal step through wafer
+        count = 0
+        x = -r-chipSideLen+xstep
+        y = -r-chipSideLen+ystep
+        while x &lt; r:
+          #Vertical step through wafer
+          while y &lt; r:
+            if chipInWafer(x, y, r, chipSideLen):
+              count = count+1
+          
+            y = y + chipSideLen
+              
+          x = x + chipSideLen
+          y = -r - chipSideLen + ystep
+      
+        if count &gt;= maxCount:
+          maxCount = count
+          maxCountStepY = ystep
+          maxCountStepX = xstep
+        ystep = ystep + dy
+      xstep = xstep + dy
+      
+    return maxCount, maxCountStepX, maxCountStepY
+    
+  def inRegion (self, x0, minx, maxx):
+    if x0 &lt; minx or x0 &gt; maxx:
+      return False
+    return True
+    
+  def dicingSawOptimization(self, waferDiameter, chipSideLen, maxStepSize, flats=[], deg=45):
+    #Function init
+    dy = min(maxStepSize,chipSideLen / 100)
+    maxCountStepX = 0
+    maxCountStepY = 0
+    maxCount = 0
+    r=waferDiameter/2
+    xmin=-r
+    xmax=r
+    ymin=-r
+    ymax=r
+    m=0
+    b=0
+    doubleFlatAngled = False
+    
+    #Adjust boundaries if we have flats to consider
+    if len(flats) &gt; 0:
+      xmin = -math.sqrt(r**2 - (flats[0]/2)**2)
+      
+      if len(flats) &gt; 1:
+        if deg==45:
+          m=-1
+          b=-math.sqrt(2*r**2 - (flats[1]**2)/2)
+          doubleFlatAngled = True
+        elif deg==90:
+          ymin=-math.sqrt(r**2 - (flats[1]/2)**2)
+        elif deg==135:
+          m=1
+          b=-math.sqrt(2*r**2 - (flats[1]**2)/2)
+          doubleFlatAngled = True
+        elif deg==180:
+          xmax = math.sqrt(r**2 - (flats[1]/2)**2)
+        else:
+          raise NameError('Invalid second flat angle')
+       
+    #x sweep
+    xstep = 0
+    while xstep &lt; chipSideLen:
+      ystep = 0
+      
+      #y sweep
+      while ystep &lt; chipSideLen:
+        #Horizontal step through wafer
+        count = 0
+        x = -r-chipSideLen+xstep
+        y = -r-chipSideLen+ystep
+        while x &lt; xmax:
+          #Vertical step through wafer
+          while y &lt; r:
+            if not doubleFlatAngled and chipInWafer(x, y, chipSideLen, r, xmin, xmax, ymin, ymax):
+                count = count + 1
+            elif chipInWaferLinBound(x, y, chipSideLen, r, xmin, xmax, m, b):
+              count = count + 1
+            y = y + chipSideLen
+              
+          x = x + chipSideLen
+          y = -r - chipSideLen + ystep
+      
+        if count &gt;= maxCount:
+          maxCount = count
+          maxCountStepY = ystep
+          maxCountStepX = xstep
+        ystep = ystep + dy
+      xstep = xstep + dy
+      
+    return maxCount, maxCountStepX, maxCountStepY
+  
+  def laserOptimization(self, waferDiameter, chipSideLen, maxStepSize, flats=[]):
+    #Function init
+    dy = min(maxStepSize,chipSideLen / 100)
+    maxCountStepX = 0
+    maxCountStepY = 0
+    maxCount = 0
+    r=waferDiameter/2
+    
+    #x sweep
+    xstep = 0
+    while xstep &lt; chipSideLen:
+      count = 0
+      x = -r-chipSideLen+xstep
+      while x &lt; r:
+        colCount, colStep = optimizeColumn(waferDiameter/2, chipSideLen, x, 0) 
+        count = count + colCount      
+        x = x + chipSideLen
+      
+      if count &gt;= maxCount:
+        maxCount = count
+        maxCountStepX = xstep
+      xstep = xstep + dy
+      
+    return maxCount, maxCountStepX, maxCountStepY
+    
+  def optimizeColumn(self, r, chipSideLen, x0, ystep):
+    if inRegion(x0, -r, r) and inRegion(x0 + chipSideLen, -r, r):
+      y=min(math.sqrt(r**2 - x0**2), math.sqrt(r**2 - (x0 + chipSideLen)**2))
+      return math.floor(2*y/chipSideLen), (ystep + chipSideLen/2)
+    return 0, 0
+    
+  def calcDiceCount(self):
+    d = 0
+    flats = 0
+    angle = 45
+    chipSideLen = 5
+    dicingSawWidth = 0
+    dicingSaw = False
+    
+    #Get wafer diameter
+    if self.cm25.isChecked():
+      d = 25
+    elif self.cm51.isChecked():
+      d = 51
+    elif self.cm76.isChecked():
+      d = 76
+    elif self.cm100.isChecked():
+      d = 100
+    elif self.cm125.isChecked():
+      d = 125
+    elif self.cm130.isChecked():
+      d = 130
+    elif self.cm150.isChecked():
+      d = 150
+    elif self.cm200.isChecked():
+      d = 200
+    elif self.cm300.isChecked():
+      d = 300
+    elif self.cm450.isChecked():
+      d = 450
+    
+    #Get number of flats and their orientation
+    if self.noFlat.isChecked():
+      flats = 0
+    elif self.oneFlat.isChecked():
+      flats = 1
+    else:
+      flats = 2
+      if self.twoFlat45.isChecked():
+        angle = 45
+      elif self.twoFlat90.isChecked():
+        angle = 90
+      elif self.twoFlat135.isChecked():
+        angle = 135
+      else:
+        angle = 180
+    
+    #Get machine type and blade width
+    
+    #Calculate
+    fs = self.flats[d]
+    
+    if dicingSaw:
+      maxCount, maxCountStepX, maxCountStepY = dicingSawOptimization(waferDiameter, chipSideLen+dicingSawWidth, 1, fs, angle)
+    else:
+      maxCount, maxCountStepX, maxCountStepY = laserOptimization(waferDiameter, chipSideLen, 1)
+    
+    
+GUI_Klayout = Dialog(pya.Application.instance().main_window())
+GUI_Klayout.exec_()</text>
+</klayout-macro>
