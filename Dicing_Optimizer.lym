@@ -15,7 +15,7 @@
  <interpreter>python</interpreter>
  <dsl-interpreter-name/>
  <text>from pya import *
-import math as m
+import math
 
 # Create GUI class
 class Dialog(pya.QDialog):
@@ -32,8 +32,19 @@ class Dialog(pya.QDialog):
       #All units in mm
       self.flats = {25:[0,0], 51:[15.88, 8], 76:[22.22, 11.18], 100:[32.5, 18], 125:[42.5, 27.5], 130:[0,0], 150:[57.5, 37.5], 200:[0,0], 300:[0,0], 450:[0,0]}
       self.machines = {"SAW": 0, "LASER":1}
-      self.lastChipLen = 15
-      self.lastTool = "SAW"
+      
+      #Results variables
+      self.chipLen = 0
+      self.diameter = 0
+      self.sawWidth = 0
+      self.xOffset = 0
+      self.yOffset = 0
+      self.tool = "SAW"
+      self.solutionFound = False
+
+      #Build dialot obj
+      self.dialogObj = QMessageBox()
+      self.dialogObj.setWindowTitle("Error")
       
       #Build GUI objects
       #Input sections
@@ -43,34 +54,34 @@ class Dialog(pya.QDialog):
       self.waferDiameterLabel = QLabel('Wafer diameter:')
       self.inputLayout.addWidget(self.waferDiameterLabel)
       self.waferDiameterGroup = QButtonGroup(self)
-      self.cm25 = QRadioButton("25cm (&amp;1in)", self.inputGroup)
+      self.cm25 = QRadioButton("25mm (&amp;1in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm25)
       self.inputLayout.addWidget(self.cm25)
-      self.cm51 = QRadioButton("51cm (&amp;2in)", self.inputGroup)
+      self.cm51 = QRadioButton("51mm (&amp;2in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm51)
       self.inputLayout.addWidget(self.cm51)
-      self.cm76 = QRadioButton("76cm (&amp;3in)", self.inputGroup)
+      self.cm76 = QRadioButton("76mm (&amp;3in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm76)
       self.inputLayout.addWidget(self.cm76)
-      self.cm100 = QRadioButton("100cm (&amp;4in)", self.inputGroup)
+      self.cm100 = QRadioButton("100mm (&amp;4in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm100)
       self.inputLayout.addWidget(self.cm100)
-      self.cm125 = QRadioButton("125cm (4.&amp;9in)", self.inputGroup)
+      self.cm125 = QRadioButton("125mm (4.&amp;9in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm125)
       self.inputLayout.addWidget(self.cm125)
-      self.cm130 = QRadioButton("130cm (&amp;5in)", self.inputGroup)
+      self.cm130 = QRadioButton("130mm (&amp;5in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm130)
       self.inputLayout.addWidget(self.cm130)
-      self.cm150 = QRadioButton("150cm (&amp;6in)", self.inputGroup)
+      self.cm150 = QRadioButton("150mm (&amp;6in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm150)
       self.inputLayout.addWidget(self.cm150)
-      self.cm200 = QRadioButton("200cm (&amp;8in)", self.inputGroup)
+      self.cm200 = QRadioButton("200mm (&amp;8in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm200)
       self.inputLayout.addWidget(self.cm200)
-      self.cm300 = QRadioButton("300cm (&amp;12in)", self.inputGroup)
+      self.cm300 = QRadioButton("300mm (&amp;12in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm300)
       self.inputLayout.addWidget(self.cm300)
-      self.cm450 = QRadioButton("450cm (&amp;18in)", self.inputGroup)
+      self.cm450 = QRadioButton("450mm (&amp;18in)", self.inputGroup)
       self.waferDiameterGroup.addButton(self.cm450)
       self.inputLayout.addWidget(self.cm450)
       
@@ -182,7 +193,7 @@ class Dialog(pya.QDialog):
       #Save section
       self.buttonBox = QDialogButtonBox(self)
       self.calcButton = self.buttonBox.addButton("Calculate", QDialogButtonBox.AcceptRole)
-      self.printButton = self.buttonBox.addButton("Print to File", QDialogButtonBox.AcceptRole)
+      self.printButton = self.buttonBox.addButton("Write to File", QDialogButtonBox.AcceptRole)
       self.cancel = self.buttonBox.addButton(QDialogButtonBox.Cancel)
       
 
@@ -218,6 +229,7 @@ class Dialog(pya.QDialog):
       self.twoFlat90.clicked(self.updateFlat)
       self.twoFlat135.clicked(self.updateFlat)
       self.twoFlat180.clicked(self.updateFlat)
+      self.calcButton.clicked(self.calcDiceCount)
             
       #Update GUI
       self.updateFlat()
@@ -284,29 +296,29 @@ class Dialog(pya.QDialog):
       
   def chipInWafer(self, x0, y0, slen, r, xmin, xmax, ymin, ymax):
     #Bottom left corner
-    if not inRegion(x0, xmin, xmax):
+    if not self.inRegion(x0, xmin, xmax):
       return False
     y = math.sqrt(r**2 - x0**2)
     y0min = max(-y, ymin)
     y0max = min(y, ymax)
-    if not inRegion(y0, y0min, y0max):
+    if not self.inRegion(y0, y0min, y0max):
       return False  
   
     #Top left corner
-    if not inRegion(y0+slen, y0min, y0max):
+    if not self.inRegion(y0+slen, y0min, y0max):
       return False
       
     #Bottom right corner
-    if not inRegion(x0+slen, xmin, xmax):
+    if not self.inRegion(x0+slen, xmin, xmax):
       return False
     y = math.sqrt(r**2 - (x0+slen)**2)
     y0min = max(-y, ymin)
     y0max = min(y, ymax)
-    if not inRegion(y0, y0min, y0max):
+    if not self.inRegion(y0, y0min, y0max):
       return False 
     
     #Top right corner
-    if not inRegion(y0+slen, y0min, y0max):
+    if not self.inRegion(y0+slen, y0min, y0max):
       return False
     
     #If we're here then all four corners are within the wafer
@@ -314,34 +326,34 @@ class Dialog(pya.QDialog):
     
   def chipInWaferLinBound(self, x0, y0, slen, r, xmin, xmax, m, b):
     #Bottom left corner
-    if not inRegion(x0, xmin, xmax):
+    if not self.inRegion(x0, xmin, xmax):
       return False
     y = math.sqrt(r**2 - x0**2)
     y0min = max(-y, m*x0+b)
     y0max = y
-    if not inRegion(y0, y0min, y0max):
+    if not self.inRegion(y0, y0min, y0max):
       return False  
   
     #Top left corner
-    if not inRegion(y0+slen, y0min, y0max):
+    if not self.inRegion(y0+slen, y0min, y0max):
       return False  
       
     #Bottom right corner
-    if not inRegion(x0+slen, xmin, xmax):
+    if not self.inRegion(x0+slen, xmin, xmax):
       return False
     y = math.sqrt(r**2 - (x0+slen)**2)
     y0min = max(-y, m*(x0+slen)+b)
     y0max = y
-    if not inRegion(y0, y0min, y0max):
+    if not self.inRegion(y0, y0min, y0max):
       return False 
     
     #Top right corner
-    if not inRegion(y0+slen, y0min, y0max):
+    if not self.inRegion(y0+slen, y0min, y0max):
       return False
     
     #If we're here then all four corners are within the wafer
     return True
-  
+   
   def dicingSawOptimization(self, waferDiameter, chipSideLen, maxStepSize, flats=[], deg=45):
     #Function init
     dy = min(maxStepSize,chipSideLen / 100)
@@ -435,9 +447,9 @@ class Dialog(pya.QDialog):
         while x &lt; xmax:
           #Vertical step through wafer
           while y &lt; r:
-            if not doubleFlatAngled and chipInWafer(x, y, chipSideLen, r, xmin, xmax, ymin, ymax):
+            if not doubleFlatAngled and self.chipInWafer(x, y, chipSideLen, r, xmin, xmax, ymin, ymax):
                 count = count + 1
-            elif chipInWaferLinBound(x, y, chipSideLen, r, xmin, xmax, m, b):
+            elif self.chipInWaferLinBound(x, y, chipSideLen, r, xmin, xmax, m, b):
               count = count + 1
             y = y + chipSideLen
               
@@ -467,7 +479,7 @@ class Dialog(pya.QDialog):
       count = 0
       x = -r-chipSideLen+xstep
       while x &lt; r:
-        colCount, colStep = optimizeColumn(waferDiameter/2, chipSideLen, x, 0) 
+        colCount, colStep = self.optimizeColumn(waferDiameter/2, chipSideLen, x, 0) 
         count = count + colCount      
         x = x + chipSideLen
       
@@ -479,40 +491,43 @@ class Dialog(pya.QDialog):
     return maxCount, maxCountStepX, maxCountStepY
     
   def optimizeColumn(self, r, chipSideLen, x0, ystep):
-    if inRegion(x0, -r, r) and inRegion(x0 + chipSideLen, -r, r):
+    if self.inRegion(x0, -r, r) and self.inRegion(x0 + chipSideLen, -r, r):
       y=min(math.sqrt(r**2 - x0**2), math.sqrt(r**2 - (x0 + chipSideLen)**2))
       return math.floor(2*y/chipSideLen), (ystep + chipSideLen/2)
     return 0, 0
     
   def calcDiceCount(self):
-    d = 0
+    #Default params
+    self.diameter = 150
     flats = 0
     angle = 45
+    f1len = 0
+    fl2len = 0
     chipSideLen = 5
     dicingSawWidth = 0
     dicingSaw = False
     
     #Get wafer diameter
     if self.cm25.isChecked():
-      d = 25
+      self.diameter = 25
     elif self.cm51.isChecked():
-      d = 51
+      self.diameter = 51
     elif self.cm76.isChecked():
-      d = 76
+      self.diameter = 76
     elif self.cm100.isChecked():
-      d = 100
+      self.diameter = 100
     elif self.cm125.isChecked():
-      d = 125
+      self.diameter = 125
     elif self.cm130.isChecked():
-      d = 130
+      self.diameter = 130
     elif self.cm150.isChecked():
-      d = 150
+      self.diameter = 150
     elif self.cm200.isChecked():
-      d = 200
+      self.diameter = 200
     elif self.cm300.isChecked():
-      d = 300
+      self.diameter = 300
     elif self.cm450.isChecked():
-      d = 450
+      self.diameter = 450
     
     #Get number of flats and their orientation
     if self.noFlat.isChecked():
@@ -529,17 +544,96 @@ class Dialog(pya.QDialog):
         angle = 135
       else:
         angle = 180
+
+    #Get flat lengths, units, and calcuate lengths in mm
+    if flats &gt; 0:
+      try:
+        f1len = self.getNumberFromPanel(self.primaryFlatLineEdit, self.primaryFlatLenUnits)
+      except:
+        self.dialogObj.setText("Error:  Invalid length for flat 1.")
+        self.dialogObj.open()
+        return 0
+      
+      if flats &gt; 1:
+        try:
+          f2len = self.getNumberFromPanel(self.secondaryFlatLineEdit, self.secondaryFlatLenUnits)
+        except:
+          self.dialogObj.setText("Error:  Invalid length for flat 2.")
+          self.dialogObj.open()
+          return 0
     
-    #Get machine type and blade width
+    #Disable any flats that have a length of 0
+    if flats == 2:
+      if f2len == 0:
+        flats = 1
+      if f1len == 0:
+        f1len = f2len
+        flats = 1
+    if flats == 1 and f1len == 0:
+      flats = 0
     
-    #Calculate
-    fs = self.flats[d]
+    fs = []
+    if flats == 1:
+      fs = [f1len]
+    elif flats == 2:
+      fs = [f1len, f2len]
     
+    #Get chip side length
+    try:
+      chipSideLen = self.getNumberFromPanel(self.lenLineEdit, self.chipLenUnits)
+    except:
+      self.dialogObj.setText("Error:  Invalid length for chip length.")
+      self.dialogObj.open()
+      return 0
+    
+    #Get machine type
+    dicingSaw = self.saw.isChecked()
+    
+    #Get blade width/spot size
+    try:
+      dicingSawWidth = self.getNumberFromPanel(self.dicingBladeLineEdit, self.dicingBladeLenUnits)
+    except:
+      self.dialogObj.setText("Error:  Invalid width for dicing saw/laser spot size.")
+      self.dialogObj.open()
+      return 0
+    
+    #Calculate chip count
+    print("CALCULATING")
     if dicingSaw:
-      maxCount, maxCountStepX, maxCountStepY = dicingSawOptimization(waferDiameter, chipSideLen+dicingSawWidth, 1, fs, angle)
+      maxCount, maxCountStepX, maxCountStepY = self.dicingSawOptimization(self.diameter, chipSideLen+dicingSawWidth, 1, fs, angle)
     else:
-      maxCount, maxCountStepX, maxCountStepY = laserOptimization(waferDiameter, chipSideLen, 1)
+      maxCount, maxCountStepX, maxCountStepY = self.laserOptimization(self.iameter, chipSideLen, 1)
     
+    #Store and display results
+    self.chipsFoundLabel.text = 'Max chips found:  ' + str(maxCount)
+
+  def getNumberFromPanel(self, numberLineControl, unitsControl):
+    val = numberLineControl.text
+    try:
+      val = float(val)
+    except:
+      raise NameError("Invalid input")
+    
+    if not unitsControl is None:
+      units = unitsControl.currentText
+      val = self.convertToMM(val, units)
+    
+    return val
+          
+  def convertToMM(self, length, units):
+    conv = 1
+    if units == "um":
+      conv = 1e-3
+    elif units == "cm":
+      conv = 10
+    elif units == "in":
+      conv = 25.4
+    elif units == "mm":
+      conv = 1
+    else:
+      raise NameError("Invalid Units")
+      
+    return length * conv        
     
 GUI_Klayout = Dialog(pya.Application.instance().main_window())
 GUI_Klayout.exec_()</text>
